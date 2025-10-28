@@ -1,7 +1,6 @@
 "use server";
 
 import { generateObject } from "ai";
-// import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { google } from "@ai-sdk/google";
 
@@ -20,7 +19,7 @@ const extractedInfoSchema = z.object({
   documentCategory: z
     .enum([
       "Identity",
-      "Immigration", 
+      "Immigration",
       "Evidence",
       "Affidavits",
       "Employment",
@@ -32,7 +31,7 @@ const extractedInfoSchema = z.object({
       "Org Proof",
       "Forms",
       "Compliance",
-      "US Benefit"
+      "US Benefit",
     ])
     .describe(
       "Category that best describes this document based on its content and purpose in legal/immigration context"
@@ -95,7 +94,9 @@ export async function extractCaseDetails(document: DocumentFile) {
     else if (isDocx || isXlsx) {
       // Note: These formats need special parsing libraries to extract text properly
       // For now, we'll skip them and return an error message
-      throw new Error(`File type ${document.mimeType} is not yet supported. Please use PDF or image files.`);
+      throw new Error(
+        `File type ${document.mimeType} is not yet supported. Please use PDF or image files.`
+      );
     } else {
       // Fallback: for other file types, try as text
       // This will decode base64 to text

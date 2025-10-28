@@ -1,4 +1,4 @@
-import { LegalAppSidebar } from "@/components/legal-app-sidebar";
+import { SidebarWithCases } from "@/components/sidebar-with-cases";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -22,105 +22,30 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, FileText, User, Clock, DollarSign } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Calendar, FileText, User, Clock, DollarSign, Phone, Mail, MapPin, Upload, MessageSquare, Edit, AlertCircle } from "lucide-react";
+import { getCaseById } from "@/actions/case";
+import { notFound } from "next/navigation";
+import { ClientInformationPanel } from "@/components/client-information-panel";
+import { DocumentManagementPanel } from "@/components/document-management-panel";
+import { CaseStrategyPanel } from "@/components/case-strategy-panel";
 
-// Mock case data - in a real app, this would come from a database
-interface CaseData {
-  id: string;
-  title: string;
-  caseNumber: string;
-  status: string;
-  client?: string;
-  type?: string;
-  filingDate?: string;
-  nextHearing?: string;
-  assignedAttorney?: string;
-  estimatedValue?: string;
-  description?: string;
-}
 
-const mockCases: Record<string, CaseData> = {
-  "1": {
-    id: "1",
-    title: "Smith vs. Corporation Inc.",
-    caseNumber: "2024-CV-001",
-    status: "active",
-    client: "John Smith",
-    type: "Civil Litigation",
-    filingDate: "2024-01-15",
-    nextHearing: "2024-11-15",
-    assignedAttorney: "Sarah Johnson",
-    estimatedValue: "$250,000",
-    description:
-      "Contract dispute regarding breach of service agreement between client and corporation.",
-  },
-  "2": {
-    id: "2",
-    title: "Johnson Estate Planning",
-    caseNumber: "2024-EP-045",
-    status: "active",
-    client: "Mary Johnson",
-    type: "Estate Planning",
-    filingDate: "2024-02-20",
-    nextHearing: "2024-11-20",
-    assignedAttorney: "Michael Brown",
-    estimatedValue: "$1,500,000",
-    description:
-      "Comprehensive estate planning including will, trusts, and power of attorney documents.",
-  },
-  "3": {
-    id: "3",
-    title: "Brown Property Dispute",
-    caseNumber: "2024-PD-023",
-    status: "pending",
-    client: "Robert Brown",
-    type: "Property Law",
-    filingDate: "2024-03-10",
-    nextHearing: "2024-12-01",
-    assignedAttorney: "Jennifer Davis",
-    estimatedValue: "$180,000",
-    description: "Property boundary dispute with neighboring property owner.",
-  },
-  "4": {
-    id: "4",
-    title: "Davis Contract Review",
-    caseNumber: "2024-CR-089",
-    status: "active",
-    client: "Lisa Davis",
-    type: "Contract Law",
-    filingDate: "2024-04-05",
-    nextHearing: "2024-11-10",
-    assignedAttorney: "David Wilson",
-    estimatedValue: "$75,000",
-    description:
-      "Review and negotiation of commercial lease agreement for retail space.",
-  },
-  "5": {
-    id: "5",
-    title: "Miller Trademark Registration",
-    caseNumber: "2024-TM-012",
-    status: "completed",
-    client: "Miller Technologies",
-    type: "Intellectual Property",
-    filingDate: "2024-01-08",
-    nextHearing: "-",
-    assignedAttorney: "Sarah Johnson",
-    estimatedValue: "$25,000",
-    description:
-      "Trademark registration and protection for company brand and logo.",
-  },
-};
-
-export default function CaseDetailsPage({
+export default async function CaseDetailsPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const caseData = mockCases[params.id] || {
-    title: "Case Not Found",
-    caseNumber: "N/A",
-    status: "unknown",
-  };
+  const { id } = await params;
+  const result = await getCaseById(id);
+  
+  if (!result.success || !result.data) {
+    notFound();
+  }
+  
+  const caseData = result.data;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -137,7 +62,7 @@ export default function CaseDetailsPage({
 
   return (
     <SidebarProvider>
-      <LegalAppSidebar />
+      <SidebarWithCases />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
@@ -156,7 +81,7 @@ export default function CaseDetailsPage({
               </BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem>
-                <BreadcrumbPage>{caseData.caseNumber}</BreadcrumbPage>
+                <BreadcrumbPage>{caseData.title}</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
@@ -177,7 +102,7 @@ export default function CaseDetailsPage({
             </Badge>
           </div>
 
-          {/* Case Overview */}
+          {/* Quick Stats */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -186,172 +111,219 @@ export default function CaseDetailsPage({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {caseData.client || "N/A"}
+                  {caseData.client?.name || "N/A"}
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Case Type</CardTitle>
+                <CardTitle className="text-sm font-medium">Documents</CardTitle>
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {caseData.type || "N/A"}
+                  {caseData.documents?.length || 0}
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Next Hearing
+                  Case Type
                 </CardTitle>
                 <Calendar className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {caseData.nextHearing || "N/A"}
+                  {caseData.type || "Immigration"}
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Est. Value
+                  Assigned To
                 </CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <User className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {caseData.estimatedValue || "N/A"}
+                  {caseData.assignedTo?.name || "Unassigned"}
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Case Details */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Case Information</CardTitle>
-                <CardDescription>
-                  Essential details about this case
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Filing Date:</span>
-                  <span className="text-sm">
-                    {caseData.filingDate || "N/A"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">
-                    Assigned Attorney:
-                  </span>
-                  <span className="text-sm">
-                    {caseData.assignedAttorney || "N/A"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Status:</span>
-                  <Badge
-                    className={`${getStatusColor(caseData.status)} text-white`}
-                  >
-                    {caseData.status}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Tabbed Content */}
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="overview">Case Overview</TabsTrigger>
+              <TabsTrigger value="client">Client Information</TabsTrigger>
+              <TabsTrigger value="documents">Case Documents</TabsTrigger>
+              <TabsTrigger value="strategy">Case Strategy</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="overview" className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Case Information</CardTitle>
+                    <CardDescription>
+                      Essential details about this case
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Created:</span>
+                      <span className="text-sm">
+                        {new Date(caseData.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Assigned To:</span>
+                      <span className="text-sm">
+                        {caseData.assignedTo?.name || "Unassigned"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Status:</span>
+                      <Badge className={`${getStatusColor(caseData.status)} text-white`}>
+                        {caseData.status}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Case Description</CardTitle>
-                <CardDescription>Overview of the case matter</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm">
-                  {caseData.description || "No description available."}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Common case management tasks</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                <Button>Add Note</Button>
-                <Button variant="outline">Upload Document</Button>
-                <Button variant="outline">Schedule Hearing</Button>
-                <Button variant="outline">Update Status</Button>
-                <Button variant="outline">Send Email</Button>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Case Description</CardTitle>
+                    <CardDescription>Overview of the case matter</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm">
+                      {caseData.description || "No description available."}
+                    </p>
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>
-                Latest updates and events for this case
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-start gap-4 pb-4 border-b">
-                  <div className="bg-muted rounded-full p-2">
-                    <FileText className="h-4 w-4" />
+              
+              {/* Quick Actions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Quick Actions</CardTitle>
+                  <CardDescription>Common case management tasks</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Add Note
+                    </Button>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      Upload Document
+                    </Button>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <Edit className="h-4 w-4" />
+                      Edit Case
+                    </Button>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      Update Status
+                    </Button>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Document uploaded</p>
-                    <p className="text-xs text-muted-foreground">
-                      Contract_Draft_v2.pdf was added to the case files
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      2 days ago
-                    </p>
+                </CardContent>
+              </Card>
+              
+              {/* Recent Activity */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Activity</CardTitle>
+                  <CardDescription>Latest updates and events for this case</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Case Creation Activity */}
+                    <div className="flex items-start gap-4 pb-4 border-b">
+                      <div className="bg-green-100 rounded-full p-2">
+                        <FileText className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Case created</p>
+                        <p className="text-xs text-muted-foreground">
+                          Case {caseData.caseNumber} was created with {caseData.documents?.length || 0} documents
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(caseData.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Document Activities */}
+                    {caseData.documents && caseData.documents.slice(0, 2).map((doc) => (
+                      <div key={doc.id} className="flex items-start gap-4 pb-4 border-b">
+                        <div className="bg-blue-100 rounded-full p-2">
+                          <Upload className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Document uploaded</p>
+                          <p className="text-xs text-muted-foreground">
+                            {doc.title} was categorized as {doc.category}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(doc.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Assignment Activity */}
+                    {caseData.assignedTo && (
+                      <div className="flex items-start gap-4">
+                        <div className="bg-purple-100 rounded-full p-2">
+                          <User className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Case assigned</p>
+                          <p className="text-xs text-muted-foreground">
+                            Case assigned to {caseData.assignedTo.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(caseData.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="flex items-start gap-4 pb-4 border-b">
-                  <div className="bg-muted rounded-full p-2">
-                    <Calendar className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Hearing scheduled</p>
-                    <p className="text-xs text-muted-foreground">
-                      Next hearing set for {caseData.nextHearing}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      5 days ago
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="bg-muted rounded-full p-2">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Case assigned</p>
-                    <p className="text-xs text-muted-foreground">
-                      Case assigned to {caseData.assignedAttorney}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      1 week ago
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="client" className="space-y-4">
+              <ClientInformationPanel 
+                client={caseData.client}
+                caseMetadata={caseData.case_metadata}
+              />
+            </TabsContent>
+            
+            <TabsContent value="documents" className="space-y-4">
+              <DocumentManagementPanel 
+                documents={caseData.documents || []}
+                caseId={caseData.id}
+              />
+            </TabsContent>
+            
+            <TabsContent value="strategy" className="space-y-4">
+              <CaseStrategyPanel 
+                notes={caseData.notes || []}
+                strategies={caseData.strategies || []}
+                caseId={caseData.id}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </SidebarInset>
     </SidebarProvider>

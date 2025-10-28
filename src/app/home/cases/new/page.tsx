@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LegalAppSidebar } from "@/components/legal-app-sidebar";
+import { SidebarClient } from "@/components/sidebar-client";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -48,16 +48,22 @@ export default function NewCasePage() {
   const [processedData, setProcessedData] = useState<ProcessedData | null>(
     null
   );
+  const [originalFiles, setOriginalFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleFilesProcessed = (data: ProcessedData) => {
+  const handleFilesProcessed = (data: ProcessedData, files: File[]) => {
     setProcessedData(data);
+    setOriginalFiles(files);
     setIsLoading(false);
+  };
+
+  const handleUploadStateChange = (uploading: boolean) => {
+    setIsLoading(uploading);
   };
 
   return (
     <SidebarProvider>
-      <LegalAppSidebar />
+      <SidebarClient />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
@@ -92,18 +98,20 @@ export default function NewCasePage() {
           </div>
 
           {/* Two-column layout with bg-gray-50 background */}
-          <div className="bg-gray-50 p-6 rounded-sm">
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Left Column - Document Upload */}
-              <DocumentDropzone onFilesProcessed={handleFilesProcessed} />
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Left Column - Document Upload */}
+            <DocumentDropzone
+              onFilesProcessed={handleFilesProcessed}
+              onUploadStateChange={handleUploadStateChange}
+            />
 
-              {/* Right Column - Extracted Information */}
-              <ExtractedInfoPanel
-                categories={processedData?.categories}
-                caseDetails={processedData?.caseDetails}
-                isLoading={isLoading}
-              />
-            </div>
+            {/* Right Column - Extracted Information */}
+            <ExtractedInfoPanel
+              categories={processedData?.categories}
+              caseDetails={processedData?.caseDetails}
+              isLoading={isLoading}
+              originalFiles={originalFiles}
+            />
           </div>
         </div>
       </SidebarInset>

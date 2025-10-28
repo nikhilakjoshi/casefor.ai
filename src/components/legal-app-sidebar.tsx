@@ -36,6 +36,17 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 
+interface CaseItem {
+  id: string;
+  title: string;
+  status: string;
+  caseNumber: string;
+  createdAt: string;
+  client: {
+    name: string;
+  };
+}
+
 // Legal case management navigation data
 const data = {
   user: {
@@ -43,38 +54,6 @@ const data = {
     email: "contact@legalfirm.com",
     avatar: "/avatars/legal-firm.jpg",
   },
-  cases: [
-    {
-      id: "1",
-      title: "Smith vs. Corporation Inc.",
-      status: "active",
-      caseNumber: "2024-CV-001",
-    },
-    {
-      id: "2",
-      title: "Johnson Estate Planning",
-      status: "active",
-      caseNumber: "2024-EP-045",
-    },
-    {
-      id: "3",
-      title: "Brown Property Dispute",
-      status: "pending",
-      caseNumber: "2024-PD-023",
-    },
-    {
-      id: "4",
-      title: "Davis Contract Review",
-      status: "active",
-      caseNumber: "2024-CR-089",
-    },
-    {
-      id: "5",
-      title: "Miller Trademark Registration",
-      status: "completed",
-      caseNumber: "2024-TM-012",
-    },
-  ],
   navMain: [
     {
       title: "Overview",
@@ -159,9 +138,14 @@ const data = {
   ],
 };
 
+interface LegalAppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  cases?: CaseItem[];
+}
+
 export function LegalAppSidebar({
+  cases = [],
   ...props
-}: React.ComponentProps<typeof Sidebar>) {
+}: LegalAppSidebarProps) {
   const [pathname] = React.useState("/home");
 
   return (
@@ -210,18 +194,28 @@ export function LegalAppSidebar({
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <SidebarMenuSub>
-                      {data.cases.map((caseItem) => (
-                        <SidebarMenuSubItem key={caseItem.id}>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname === `/home/cases/${caseItem.id}`}
-                          >
-                            <a href={`/home/cases/${caseItem.id}`}>
-                              <span className="truncate">{caseItem.title}</span>
-                            </a>
+                      {cases.length > 0 ? (
+                        cases.map((caseItem) => (
+                          <SidebarMenuSubItem key={caseItem.id}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname === `/home/cases/${caseItem.id}`}
+                            >
+                              <a href={`/home/cases/${caseItem.id}`}>
+                                <span className="truncate">{caseItem.title}</span>
+                              </a>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))
+                      ) : (
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton asChild>
+                            <div className="text-xs text-muted-foreground px-2 py-1">
+                              No cases yet. Create your first case!
+                            </div>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
-                      ))}
+                      )}
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>

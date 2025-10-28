@@ -1,6 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createNewCase } from "@/actions/case";
+import { uploadFileToS3 } from "@/lib/s3";
+import type { CreateCasePayload } from "@/types/case";
+
+// Custom hook for animated dots
+function useAnimatedDots() {
+  const [dots, setDots] = useState("");
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots((prev) => {
+        if (prev === "...") return ".";
+        return prev + ".";
+      });
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return dots;
+}
 import {
   Card,
   CardContent,
@@ -9,7 +31,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, AlertCircle } from "lucide-react";
+import { FileText, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,12 +60,14 @@ interface ExtractedInfoPanelProps {
   categories?: DocumentCategory[];
   caseDetails?: CaseDetails;
   isLoading?: boolean;
+  originalFiles?: File[]; // Add original files for upload
 }
 
 export function ExtractedInfoPanel({
   categories,
   caseDetails,
   isLoading = false,
+  originalFiles = [],
 }: ExtractedInfoPanelProps) {
   const [editedCaseTitle, setEditedCaseTitle] = useState(
     caseDetails?.caseTitle || ""
@@ -51,6 +75,10 @@ export function ExtractedInfoPanel({
   const [editedFields, setEditedFields] = useState<ExtractedField[]>(
     caseDetails?.extractedFields || []
   );
+  const [isCreatingCase, setIsCreatingCase] = useState(false);
+  const [caseCreationError, setCaseCreationError] = useState<string | null>(null);
+  const animatedDots = useAnimatedDots();
+  const router = useRouter();
 
   useEffect(() => {
     if (caseDetails) {
@@ -85,6 +113,68 @@ export function ExtractedInfoPanel({
     );
   };
 
+  const handleCreateCase = async () => {
+    if (!caseDetails || !categories) {
+      setCaseCreationError("Missing case details or categories");
+      return;
+    }
+
+    if (!editedCaseTitle.trim()) {
+      setCaseCreationError("Case title is required");
+      return;
+    }
+
+    setIsCreatingCase(true);
+    setCaseCreationError(null);
+
+    try {
+      // Upload files to S3 first
+      const uploadPromises = originalFiles.map(async (file) => {
+        const uploadResult = await uploadFileToS3(file, "temp"); // We'll get case ID after creation
+        if (!uploadResult.success) {
+          throw new Error(`Failed to upload ${file.name}: ${uploadResult.error}`);
+        }
+        return {
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          s3Bucket: uploadResult.bucket,
+          s3Key: uploadResult.key,
+          fileUrl: uploadResult.fileUrl!,
+        };
+      });
+
+      const uploadedFiles = await Promise.all(uploadPromises);
+
+      // Create case with uploaded file info
+      const casePayload: CreateCasePayload = {
+        caseTitle: editedCaseTitle,
+        documentCategory: caseDetails.documentCategory,
+        categoryRationale: caseDetails.categoryRationale,
+        extractedFields: editedFields,
+        categories: categories,
+        files: uploadedFiles,
+      };
+
+      const result = await createNewCase(casePayload);
+
+      if (result.success) {
+        // Success! Navigate to the case details page
+        console.log("Case created successfully:", result.data);
+        router.push(`/home/cases/${result.data?.caseId}`);
+      } else {
+        setCaseCreationError(result.error || "Failed to create case");
+      }
+    } catch (error) {
+      console.error("Error creating case:", error);
+      setCaseCreationError(
+        error instanceof Error ? error.message : "Failed to create case"
+      );
+    } finally {
+      setIsCreatingCase(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Card className="rounded-sm bg-white">
@@ -92,9 +182,8 @@ export function ExtractedInfoPanel({
           <CardTitle>Client Information</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Loader2 className="h-12 w-12 animate-spin text-gray-400 mb-4" />
           <p className="text-sm text-gray-600">
-            Analyzing documents with AI...
+            Extracting Information{animatedDots}
           </p>
         </CardContent>
       </Card>
@@ -203,6 +292,13 @@ export function ExtractedInfoPanel({
         </CardContent>
       </ScrollArea>
       <CardFooter className="w-full border-t">
+        {/* Case Creation Error */}
+        {caseCreationError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-sm">
+            <p className="text-sm text-red-600">{caseCreationError}</p>
+          </div>
+        )}
+
         {/* Action Buttons */}
         {(categories || caseDetails) && (
           <div className="flex gap-2">
@@ -212,20 +308,17 @@ export function ExtractedInfoPanel({
               onClick={() => {
                 setEditedCaseTitle(caseDetails?.caseTitle || "");
                 setEditedFields(caseDetails?.extractedFields || []);
+                setCaseCreationError(null);
               }}
             >
               Reset Changes
             </Button>
             <Button
               className="flex-1"
-              onClick={() => {
-                console.log("Case data to submit:", {
-                  caseTitle: editedCaseTitle,
-                  extractedFields: editedFields,
-                });
-              }}
+              onClick={handleCreateCase}
+              disabled={isCreatingCase || !editedCaseTitle.trim()}
             >
-              Create Case with This Info
+              {isCreatingCase ? "Creating Case..." : "Create Case with This Info"}
             </Button>
           </div>
         )}

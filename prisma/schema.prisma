@@ -75,17 +75,18 @@ model VerificationToken {
 
 // Client model
 model Client {
-  id        String   @id @default(cuid())
-  name      String
-  email     String?  @unique
-  phone     String?
-  address   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String?
-  updatedBy String?
+  id             String   @id @default(cuid())
+  name           String
+  email          String?
+  phone          String?
+  address        String?
+  client_metadata Json?   @db.JsonB // Flexible metadata storage
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String?
+  updatedBy      String?
 
-  cases     Case[]
+  cases          Case[]
   
   @@map("clients")
 }
@@ -101,6 +102,7 @@ model Case {
   filingDate       DateTime?
   nextHearing      DateTime?
   estimatedValue   String?
+  case_metadata    Json?     @db.JsonB // Flexible metadata storage
   
   // Client relationship
   clientId         String
@@ -118,28 +120,77 @@ model Case {
   
   // Relations
   documents        Document[]
+  notes            CaseNote[]
+  strategies       CaseStrategy[]
   
   @@map("cases")
 }
 
 // Document model
 model Document {
-  id          String   @id @default(cuid())
-  title       String
-  description String?  @db.Text
-  fileUrl     String
-  fileName    String
-  fileSize    Int?
-  mimeType    String?
+  id                String   @id @default(cuid())
+  title             String
+  description       String?  @db.Text
+  fileUrl           String   // S3 URL or file path
+  fileName          String
+  fileSize          Int?
+  mimeType          String?
+  category          String?  // Document category from AI
+  categoryRationale String?  @db.Text // AI reasoning for category
+  s3Bucket          String?  // S3 bucket name
+  s3Key             String?  // S3 object key
+  document_metadata Json?    @db.JsonB // Flexible metadata storage
   
   // Case relationship
-  caseId      String
-  case        Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  caseId            String
+  case              Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
   
   // Audit fields
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  uploadedBy  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  uploadedBy        String?
   
   @@map("documents")
+}
+
+// Case Notes model for manual notes
+model CaseNote {
+  id        String   @id @default(cuid())
+  title     String?
+  content   String   @db.Text
+  
+  // Case relationship
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  
+  // Audit fields
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+  
+  @@map("case_notes")
+}
+
+// Case Strategy model for AI-generated strategies with versioning
+model CaseStrategy {
+  id                String   @id @default(cuid())
+  version           Int      @default(1)
+  title             String
+  content           String   @db.Text
+  summary           String?  @db.Text
+  aiModel           String   @default("gemini-2.0-flash-exp")
+  generationReason  String?  @db.Text // Why this strategy was generated
+  strategy_metadata Json?    @db.JsonB // Additional AI analysis data
+  
+  // Case relationship
+  caseId            String
+  case              Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  
+  // Audit fields
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  generatedBy       String?  // User who triggered the generation
+  
+  @@map("case_strategies")
 }
