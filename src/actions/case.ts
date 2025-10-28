@@ -396,7 +396,7 @@ export async function updateClient(data: {
   }
 }
 
-// Upload and process documents with AI extraction
+// Upload and process documents with AI extraction + backend integration
 export async function uploadDocuments(data: {
   caseId: string;
   files: File[];
@@ -410,17 +410,17 @@ export async function uploadDocuments(data: {
 
     for (const file of data.files) {
       try {
-        // Upload file to S3
+        // Upload file to backend (handles S3 + Pinecone chunking)
         const uploadResult = await uploadFileToS3(file, data.caseId);
         if (!uploadResult.success) {
           throw new Error(`Failed to upload ${file.name}: ${uploadResult.error}`);
         }
 
-        // Convert file to base64 for AI processing
+        // Convert file to base64 for local AI processing
         const arrayBuffer = await file.arrayBuffer();
         const base64Data = Buffer.from(arrayBuffer).toString('base64');
 
-        // Extract document details using AI
+        // Extract document details using local AI (for UI categorization)
         const documentData = {
           name: file.name,
           mimeType: file.type,
@@ -429,7 +429,7 @@ export async function uploadDocuments(data: {
 
         const extractionResult = await extractCaseDetails(documentData);
 
-        // Create document record in database
+        // Create document record in database with backend metadata
         const document = await prisma.document.create({
           data: {
             title: extractionResult.caseTitle || file.name,
@@ -455,6 +455,12 @@ export async function uploadDocuments(data: {
                 key: uploadResult.key,
                 uploadedAt: new Date().toISOString(),
               },
+              backendProcessing: {
+                chunksCreated: uploadResult.chunksCreated,
+                documentsProcessed: uploadResult.documentsProcessed,
+                warning: uploadResult.warning,
+                processedAt: new Date().toISOString(),
+              },
             },
           },
         });
@@ -464,6 +470,8 @@ export async function uploadDocuments(data: {
           fileName: file.name,
           documentId: document.id,
           category: extractionResult.documentCategory,
+          chunksCreated: uploadResult.chunksCreated,
+          warning: uploadResult.warning,
         });
 
       } catch (fileError) {

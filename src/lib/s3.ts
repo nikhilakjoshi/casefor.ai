@@ -1,16 +1,15 @@
-// S3 utilities for file upload and management
-// Note: You'll need to install @aws-sdk/client-s3 and configure AWS credentials
+// S3 utilities for file upload and management via backend API
+import { uploadToBackend } from "./backend-api";
 
-// import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-// import { v4 as uuidv4 } from "uuid";
-
-// Placeholder implementation - replace with actual S3 configuration
 export interface S3UploadResult {
   success: boolean;
   fileUrl?: string;
   bucket?: string;
   key?: string;
   error?: string;
+  warning?: string;
+  chunksCreated?: number;
+  documentsProcessed?: number;
 }
 
 export async function uploadFileToS3(
@@ -18,24 +17,40 @@ export async function uploadFileToS3(
   caseId: string
 ): Promise<S3UploadResult> {
   try {
-    // For now, return a mock implementation
-    // In production, you would:
-    // 1. Create S3 client
-    // 2. Generate unique key
-    // 3. Upload file
-    // 4. Return the URL and metadata
+    const backendResult = await uploadToBackend(file);
     
-    const mockKey = `cases/${caseId}/documents/${Date.now()}_${file.name}`;
-    const mockUrl = `https://your-bucket.s3.amazonaws.com/${mockKey}`;
+    if (!backendResult.success) {
+      return {
+        success: false,
+        error: backendResult.error,
+      };
+    }
+
+    const data = backendResult.data!;
     
-    // TODO: Implement actual S3 upload
-    console.log("Mock S3 upload for file:", file.name);
+    // Extract bucket and key from S3 URL if available
+    let bucket: string | undefined;
+    let key: string | undefined;
+    
+    if (data.s3_url) {
+      try {
+        const url = new URL(data.s3_url);
+        const pathParts = url.pathname.substring(1).split('/');
+        bucket = url.hostname.split('.')[0]; // Extract bucket from hostname
+        key = pathParts.join('/'); // Rest of path is the key
+      } catch (urlError) {
+        console.warn("Could not parse S3 URL:", data.s3_url);
+      }
+    }
     
     return {
       success: true,
-      fileUrl: mockUrl,
-      bucket: "your-bucket-name",
-      key: mockKey,
+      fileUrl: data.s3_url || undefined,
+      bucket,
+      key,
+      warning: data.warning,
+      chunksCreated: data.chunks_created,
+      documentsProcessed: data.documents_processed,
     };
   } catch (error) {
     console.error("S3 upload error:", error);
