@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createNewCase } from "@/actions/case";
-import { uploadFileToS3 } from "@/lib/s3";
-import type { CreateCasePayload } from "@/types/case";
+import { createNewCase, uploadDocumentsToCase } from "@/actions/case";
+import type { CreateCasePayload, UploadDocumentsToCasePayload } from "@/types/case";
 
 // Custom hook for animated dots
 function useAnimatedDots() {
@@ -76,7 +75,9 @@ export function ExtractedInfoPanel({
     caseDetails?.extractedFields || []
   );
   const [isCreatingCase, setIsCreatingCase] = useState(false);
+  const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
   const [caseCreationError, setCaseCreationError] = useState<string | null>(null);
+  const [currentPhase, setCurrentPhase] = useState<'idle' | 'creating-case' | 'uploading-documents'>('idle');
   const animatedDots = useAnimatedDots();
   const router = useRouter();
 
@@ -124,54 +125,74 @@ export function ExtractedInfoPanel({
       return;
     }
 
+    if (originalFiles.length === 0) {
+      setCaseCreationError("No files to upload");
+      return;
+    }
+
     setIsCreatingCase(true);
     setCaseCreationError(null);
 
     try {
-      // Upload files to S3 first
-      const uploadPromises = originalFiles.map(async (file) => {
-        const uploadResult = await uploadFileToS3(file, "temp"); // We'll get case ID after creation
-        if (!uploadResult.success) {
-          throw new Error(`Failed to upload ${file.name}: ${uploadResult.error}`);
-        }
-        return {
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type,
-          s3Bucket: uploadResult.bucket,
-          s3Key: uploadResult.key,
-          fileUrl: uploadResult.fileUrl!,
-        };
-      });
-
-      const uploadedFiles = await Promise.all(uploadPromises);
-
-      // Create case with uploaded file info
+      // Phase 1: Create case without files
+      setCurrentPhase('creating-case');
+      
       const casePayload: CreateCasePayload = {
         caseTitle: editedCaseTitle,
         documentCategory: caseDetails.documentCategory,
         categoryRationale: caseDetails.categoryRationale,
         extractedFields: editedFields,
         categories: categories,
-        files: uploadedFiles,
       };
 
-      const result = await createNewCase(casePayload);
+      const caseResult = await createNewCase(casePayload);
 
-      if (result.success) {
-        // Success! Navigate to the case details page
-        console.log("Case created successfully:", result.data);
-        router.push(`/home/cases/${result.data?.caseId}`);
-      } else {
-        setCaseCreationError(result.error || "Failed to create case");
+      if (!caseResult.success) {
+        throw new Error(caseResult.error || "Failed to create case");
       }
+
+      const caseId = caseResult.data!.caseId;
+
+      // Phase 2: Upload documents with proper case ID
+      setCurrentPhase('uploading-documents');
+      setIsUploadingDocuments(true);
+
+      const uploadPayload: UploadDocumentsToCasePayload = {
+        caseId,
+        files: originalFiles,
+        categories: categories,
+      };
+
+      const uploadResult = await uploadDocumentsToCase(uploadPayload);
+
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || "Failed to upload documents");
+      }
+
+      // Check if any individual file uploads failed
+      const failedUploads = uploadResult.data?.uploadResults.filter(r => !r.success) || [];
+      if (failedUploads.length > 0) {
+        console.warn("Some files failed to upload:", failedUploads);
+        // Continue anyway - case is created, some documents uploaded
+      }
+
+      // Success! Navigate to the case details page
+      console.log("Case and documents created successfully:", { 
+        caseId, 
+        uploadResults: uploadResult.data?.uploadResults 
+      });
+      
+      router.push(`/home/cases/${caseId}`);
+
     } catch (error) {
-      console.error("Error creating case:", error);
+      console.error("Error in case creation process:", error);
       setCaseCreationError(
         error instanceof Error ? error.message : "Failed to create case"
       );
     } finally {
       setIsCreatingCase(false);
+      setIsUploadingDocuments(false);
+      setCurrentPhase('idle');
     }
   };
 
@@ -316,9 +337,11 @@ export function ExtractedInfoPanel({
             <Button
               className="flex-1"
               onClick={handleCreateCase}
-              disabled={isCreatingCase || !editedCaseTitle.trim()}
+              disabled={isCreatingCase || isUploadingDocuments || !editedCaseTitle.trim()}
             >
-              {isCreatingCase ? "Creating Case..." : "Create Case with This Info"}
+              {currentPhase === 'creating-case' && "Creating Case..."}
+              {currentPhase === 'uploading-documents' && "Uploading Documents..."}
+              {currentPhase === 'idle' && "Create Case with This Info"}
             </Button>
           </div>
         )}

@@ -12,6 +12,9 @@ const overpass = Overpass({
 export const metadata: Metadata = {
   title: "Legal Case Manager",
   description: "Manage your legal cases and clients efficiently",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({

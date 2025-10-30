@@ -14,10 +14,11 @@ export interface S3UploadResult {
 
 export async function uploadFileToS3(
   file: File,
-  caseId: string
+  caseId: string,
+  caseDocumentId?: string
 ): Promise<S3UploadResult> {
   try {
-    const backendResult = await uploadToBackend(file);
+    const backendResult = await uploadToBackend(file, caseId, caseDocumentId);
     
     if (!backendResult.success) {
       return {

@@ -40,13 +40,19 @@ export interface S3FileInfo {
   fileUrl: string;
 }
 
-// Case creation payload
+// Case creation payload (without files)
 export interface CreateCasePayload {
   caseTitle: string;
   documentCategory: string;
   categoryRationale: string;
   extractedFields: ExtractedField[];
   categories: DocumentCategory[];
-  files: S3FileInfo[];
   assignedToId?: string;
+}
+
+// Document upload payload
+export interface UploadDocumentsToCasePayload {
+  caseId: string;
+  files: File[];
+  categories: DocumentCategory[];
 }
