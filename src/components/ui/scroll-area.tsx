@@ -13,6 +13,7 @@ interface ScrollAreaPropsWithCustomProps
 function ScrollArea({
   className,
   children,
+  overrideTableDisplay,
   ...props
 }: ScrollAreaPropsWithCustomProps) {
   return (
@@ -25,7 +26,7 @@ function ScrollArea({
         data-slot="scroll-area-viewport"
         className={cn(
           "focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1",
-          props.overrideTableDisplay && "[&>div]:block!"
+          overrideTableDisplay && "[&>div]:block!"
         )}
       >
         {children}

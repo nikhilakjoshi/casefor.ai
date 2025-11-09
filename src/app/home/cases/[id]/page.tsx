@@ -36,8 +36,10 @@ import {
 import { getCaseById } from "@/actions/case";
 import { notFound } from "next/navigation";
 import { ClientInformationPanel } from "@/components/client-information-panel";
-import { DocumentManagementPanel } from "@/components/document-management-panel";
+import { DocumentsTabTrigger } from "@/components/documents-tab-trigger";
 import { CaseStrategyPanel } from "@/components/case-strategy-panel";
+import { CaseDocumentEditorPanel } from "@/components/case-document-editor-panel";
+import dayjs from "dayjs";
 
 export default async function CaseDetailsPage({
   params,
@@ -69,7 +71,7 @@ export default async function CaseDetailsPage({
   return (
     <SidebarProvider>
       <SidebarWithCases />
-      <SidebarInset>
+      <SidebarInset className="w-[calc(100dvw-var(--sidebar-width))]!">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator
@@ -161,12 +163,13 @@ export default async function CaseDetailsPage({
           {/* Split Layout: Tabs on Left, Strategy on Right */}
           <div className="flex gap-6">
             {/* Left Side: Tabbed Content (50%) */}
-            <div className="flex-1 min-w-0" style={{ width: "50%" }}>
+            <div className="basis-1/2 shrink-0">
               <Tabs defaultValue="overview" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="information">Information</TabsTrigger>
                   <TabsTrigger value="documents">Documents</TabsTrigger>
+                  <TabsTrigger value="editor">Editor</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4">
@@ -183,7 +186,7 @@ export default async function CaseDetailsPage({
                           <Calendar className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm font-medium">Created:</span>
                           <span className="text-sm">
-                            {new Date(caseData.createdAt).toLocaleDateString()}
+                            {dayjs(caseData.createdAt).format("MM/DD/YYYY")}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -288,9 +291,7 @@ export default async function CaseDetailsPage({
                               {caseData.documents?.length || 0} documents
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              {new Date(
-                                caseData.createdAt
-                              ).toLocaleDateString()}
+                              {dayjs(caseData.createdAt).format("MM/DD/YYYY")}
                             </p>
                           </div>
                         </div>
@@ -313,7 +314,7 @@ export default async function CaseDetailsPage({
                                   {doc.title} was categorized as {doc.category}
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {new Date(doc.createdAt).toLocaleDateString()}
+                                  {dayjs(doc.createdAt).format("MM/DD/YYYY")}
                                 </p>
                               </div>
                             </div>
@@ -333,9 +334,7 @@ export default async function CaseDetailsPage({
                                 Case assigned to {caseData.assignedTo.name}
                               </p>
                               <p className="text-xs text-muted-foreground mt-1">
-                                {new Date(
-                                  caseData.createdAt
-                                ).toLocaleDateString()}
+                                {dayjs(caseData.createdAt).format("MM/DD/YYYY")}
                               </p>
                             </div>
                           </div>
@@ -352,20 +351,27 @@ export default async function CaseDetailsPage({
                   />
                 </TabsContent>
 
-                <TabsContent value="documents" className="space-y-4">
-                  <DocumentManagementPanel
-                    documents={(caseData.documents || []).map((doc) => ({
-                      ...doc,
-                      createdAt: doc.createdAt.toISOString(),
-                    }))}
-                    caseId={caseData.id}
-                  />
+                <DocumentsTabTrigger
+                  documents={(caseData.documents || []).map((doc) => ({
+                    ...doc,
+                    createdAt: doc.createdAt.toISOString(),
+                    document_metadata: doc.document_metadata as {
+                      documentType?: string;
+                      originalUrl?: string;
+                      [key: string]: unknown;
+                    } | null,
+                  }))}
+                  caseId={caseData.id}
+                />
+
+                <TabsContent value="editor" className="space-y-4">
+                  <CaseDocumentEditorPanel caseId={caseData.id} />
                 </TabsContent>
               </Tabs>
             </div>
 
             {/* Right Side: Case Strategy Panel (50%) */}
-            <div className="shrink-0" style={{ width: "50%" }}>
+            <div className="basis-1/2 shrink-0 w-1/2">
               <CaseStrategyPanel
                 notes={(caseData.notes || []).map((note) => ({
                   ...note,
@@ -375,6 +381,10 @@ export default async function CaseDetailsPage({
                 strategies={(caseData.strategies || []).map((strategy) => ({
                   ...strategy,
                   createdAt: strategy.createdAt.toISOString(),
+                  strategy_metadata: strategy.strategy_metadata as {
+                    contentType?: string;
+                    [key: string]: unknown;
+                  } | null,
                 }))}
                 caseId={caseData.id}
               />

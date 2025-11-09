@@ -1,0 +1,1 @@
+- Always use `pnpm` to add/remove/modify packages

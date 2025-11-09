@@ -5,8 +5,20 @@ import { PrismaClient } from "@prisma/client";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { generateText } from "ai";
+import dayjs from "dayjs";
 
 const prisma = new PrismaClient();
+
+// Helper function to build runtime metadata
+function buildRuntimeMetadata() {
+  const now = dayjs();
+  return {
+    currentDate: now.toISOString(),
+    currentDateFormatted: now.format('MMMM D, YYYY'),
+    timestamp: now.valueOf(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  };
+}
 
 // Input schema for the agent
 const strategyManagerInputSchema = z.object({
@@ -245,7 +257,10 @@ export const strategyManagerAgent = new Agent({
             category: doc.category,
             summary: doc.extractedData?.summary || doc.description,
             keyPoints: doc.extractedData?.keyPoints || [],
+            uploadedAt: doc.createdAt || doc.uploadTimestamp,
           }));
+
+          const runtimeMeta = buildRuntimeMetadata();
 
           const strategyContext = {
             case: {
@@ -253,6 +268,7 @@ export const strategyManagerAgent = new Agent({
               description: caseInfo.description,
               type: caseInfo.type,
               status: caseInfo.status,
+              createdAt: caseInfo.createdAt,
             },
             client: {
               name: caseInfo.client.name,
@@ -273,7 +289,11 @@ export const strategyManagerAgent = new Agent({
           const { text: generatedStrategy } = await generateText({
             model: anthropic("claude-sonnet-4-0"),
             system: systemPrompt,
-            prompt: `Generate a comprehensive legal strategy for this case:
+            prompt: `CURRENT DATE: ${runtimeMeta.currentDateFormatted}
+CURRENT TIMESTAMP: ${runtimeMeta.currentDate}
+TIMEZONE: ${runtimeMeta.timezone}
+
+Generate a comprehensive legal strategy for this case:
 
 Case Information:
 ${JSON.stringify(strategyContext, null, 2)}
@@ -313,7 +333,13 @@ Format your response as a well-structured strategy document.`,
                 documentsAnalyzed: documents.length,
                 generationContext: strategyContext,
                 aiModel: "claude-sonnet-4-0",
-                generatedAt: new Date().toISOString(),
+                generatedAt: dayjs().toISOString(),
+                runtimeContext: {
+                  generatedDate: runtimeMeta.currentDate,
+                  dateFormatted: runtimeMeta.currentDateFormatted,
+                  timezone: runtimeMeta.timezone,
+                  timestamp: runtimeMeta.timestamp,
+                },
               },
             },
           });

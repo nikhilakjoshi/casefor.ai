@@ -46,6 +46,25 @@ interface DocumentsResult {
   error?: string;
 }
 
+interface BackendScrapeResponse {
+  message: string;
+  url: string;
+  case_id: string;
+  case_document_id?: string;
+  content?: string;
+  documents_processed?: number;
+  chunks_created?: number;
+  s3_url?: string | null;
+  warning?: string;
+  content_size?: number;
+}
+
+interface ScrapeResult {
+  success: boolean;
+  data?: BackendScrapeResponse;
+  error?: string;
+}
+
 export async function uploadToBackend(
   file: File, 
   caseId: string, 
@@ -146,6 +165,65 @@ export async function getDocumentsForCase(
 
   } catch (error) {
     console.error("Backend documents retrieval error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    };
+  }
+}
+
+export async function scrapeAndUploadUrl(
+  url: string,
+  caseId: string,
+  fetchContent: boolean,
+  caseDocumentId?: string
+): Promise<ScrapeResult> {
+  try {
+    const backendUrl = process.env.BACKEND_API_URL;
+    if (!backendUrl) {
+      throw new Error("BACKEND_API_URL environment variable not set");
+    }
+
+    const payload = {
+      url,
+      case_id: caseId,
+      fetch_content: fetchContent,
+      case_document_id: caseDocumentId,
+    };
+
+    const response = await fetch(`${backendUrl}/scrape-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+      try {
+        const errorData: BackendErrorResponse = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        // If we can't parse JSON, use the default error message
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+
+    const data: BackendScrapeResponse = await response.json();
+
+    return {
+      success: true,
+      data,
+    };
+
+  } catch (error) {
+    console.error("Backend URL scraping error:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",

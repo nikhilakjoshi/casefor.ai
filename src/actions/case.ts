@@ -1,9 +1,8 @@
 "use server";
 
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { z } from "zod";
-
-const prisma = new PrismaClient();
+import dayjs from "dayjs";
 
 // Validation schemas
 const ExtractedFieldSchema = z.object({
@@ -63,14 +62,16 @@ interface UploadDocumentsToCaseResult {
   error?: string;
 }
 
-export async function createNewCase(input: CreateCaseInput): Promise<CreateCaseResult> {
+export async function createNewCase(
+  input: CreateCaseInput
+): Promise<CreateCaseResult> {
   try {
     // Validate input
     const validatedInput = CreateCaseSchema.parse(input);
 
     // Extract client information from extracted fields
     const clientInfo = extractClientInfo(validatedInput.extractedFields);
-    
+
     // Generate unique case number
     const caseNumber = await generateCaseNumber();
 
@@ -86,7 +87,7 @@ export async function createNewCase(input: CreateCaseInput): Promise<CreateCaseR
           client_metadata: {
             extractedFields: validatedInput.extractedFields,
             source: "ai_extraction",
-            extractedAt: new Date().toISOString(),
+            extractedAt: dayjs().toISOString(),
           },
         },
       });
@@ -105,7 +106,7 @@ export async function createNewCase(input: CreateCaseInput): Promise<CreateCaseR
               categoryRationale: validatedInput.categoryRationale,
               extractedFields: validatedInput.extractedFields,
               categories: validatedInput.categories,
-              extractedAt: new Date().toISOString(),
+              extractedAt: dayjs().toISOString(),
             },
           },
         },
@@ -121,14 +122,15 @@ export async function createNewCase(input: CreateCaseInput): Promise<CreateCaseR
       success: true,
       data: result,
     };
-
   } catch (error) {
     console.error("Error creating case:", error);
-    
+
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        error: `Validation error: ${error.issues.map(e => e.message).join(", ")}`,
+        error: `Validation error: ${error.issues
+          .map((e) => e.message)
+          .join(", ")}`,
       };
     }
 
@@ -139,7 +141,9 @@ export async function createNewCase(input: CreateCaseInput): Promise<CreateCaseR
   }
 }
 
-export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): Promise<UploadDocumentsToCaseResult> {
+export async function uploadDocumentsToCase(
+  input: UploadDocumentsToCaseInput
+): Promise<UploadDocumentsToCaseResult> {
   try {
     // Validate input
     const validatedInput = UploadDocumentsToCaseSchema.parse(input);
@@ -147,7 +151,9 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
 
     // Import required modules
     const { uploadFileToS3 } = await import("@/lib/s3");
-    const { extractCaseDetails } = await import("@/ai-sdk/onboarding/extract-case-details");
+    const { extractCaseDetails } = await import(
+      "@/ai-sdk/onboarding/extract-case-details"
+    );
 
     const uploadResults = [];
     const documentIds = [];
@@ -174,7 +180,7 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
                 category: category?.category,
                 rationale: category?.rationale,
                 confidence: category?.confidence,
-                extractedAt: new Date().toISOString(),
+                extractedAt: dayjs().toISOString(),
               },
               uploadStatus: "pending",
             },
@@ -185,14 +191,16 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
 
         // Upload file to backend with proper case ID and document ID
         const uploadResult = await uploadFileToS3(file, caseId, document.id);
-        
+
         if (!uploadResult.success) {
-          throw new Error(`Failed to upload ${file.name}: ${uploadResult.error}`);
+          throw new Error(
+            `Failed to upload ${file.name}: ${uploadResult.error}`
+          );
         }
 
         // Convert file to base64 for local AI processing
         const arrayBuffer = await file.arrayBuffer();
-        const base64Data = Buffer.from(arrayBuffer).toString('base64');
+        const base64Data = Buffer.from(arrayBuffer).toString("base64");
 
         // Extract document details using local AI (for UI categorization)
         const documentData = {
@@ -212,22 +220,24 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
             s3Key: uploadResult.key,
             document_metadata: {
               aiAnalysis: {
-                category: category?.category || extractionResult.documentCategory,
-                rationale: category?.rationale || extractionResult.categoryRationale,
+                category:
+                  category?.category || extractionResult.documentCategory,
+                rationale:
+                  category?.rationale || extractionResult.categoryRationale,
                 confidence: category?.confidence || 1.0,
                 extractedFields: extractionResult.extractedFields,
-                extractedAt: new Date().toISOString(),
+                extractedAt: dayjs().toISOString(),
               },
               s3Info: {
                 bucket: uploadResult.bucket,
                 key: uploadResult.key,
-                uploadedAt: new Date().toISOString(),
+                uploadedAt: dayjs().toISOString(),
               },
               backendProcessing: {
                 chunksCreated: uploadResult.chunksCreated,
                 documentsProcessed: uploadResult.documentsProcessed,
                 warning: uploadResult.warning,
-                processedAt: new Date().toISOString(),
+                processedAt: dayjs().toISOString(),
               },
               uploadStatus: "completed",
             },
@@ -242,10 +252,9 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
           chunksCreated: uploadResult.chunksCreated,
           warning: uploadResult.warning,
         });
-
       } catch (fileError) {
         console.error(`Error processing file ${file.name}:`, fileError);
-        
+
         // Update document status to failed if it was created
         if (documentIds.length > uploadResults.length) {
           const documentId = documentIds[documentIds.length - 1];
@@ -254,7 +263,10 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
             data: {
               document_metadata: {
                 uploadStatus: "failed",
-                error: fileError instanceof Error ? fileError.message : "Unknown error",
+                error:
+                  fileError instanceof Error
+                    ? fileError.message
+                    : "Unknown error",
               },
             },
           });
@@ -263,26 +275,9 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
         uploadResults.push({
           success: false,
           fileName: file.name,
-          error: fileError instanceof Error ? fileError.message : "Unknown error",
+          error:
+            fileError instanceof Error ? fileError.message : "Unknown error",
         });
-      }
-    }
-
-    // Auto-generate strategy after successful document uploads
-    const successfulUploads = uploadResults.filter(result => result.success);
-    if (successfulUploads.length > 0) {
-      try {
-        // Generate strategy in background (don't block the upload response)
-        const { generateCaseStrategy: generateStrategy } = await import("@/ai-sdk/agents/strategyManager");
-        
-        generateStrategy({
-          caseId,
-          reason: `Auto-generated after uploading ${successfulUploads.length} new document(s): ${successfulUploads.map(r => r.fileName).join(", ")}`,
-        }).catch(error => {
-          console.error("Background strategy generation failed:", error);
-        });
-      } catch (error) {
-        console.error("Failed to trigger background strategy generation:", error);
       }
     }
 
@@ -303,7 +298,13 @@ export async function uploadDocumentsToCase(input: UploadDocumentsToCaseInput): 
 }
 
 // Helper function to extract client information from extracted fields
-function extractClientInfo(extractedFields: Array<{ fieldName: string; fieldValue: string; label: string }>) {
+function extractClientInfo(
+  extractedFields: Array<{
+    fieldName: string;
+    fieldValue: string;
+    label: string;
+  }>
+) {
   const clientInfo: {
     name?: string;
     email?: string;
@@ -311,16 +312,23 @@ function extractClientInfo(extractedFields: Array<{ fieldName: string; fieldValu
     address?: string;
   } = {};
 
-  extractedFields.forEach(field => {
+  extractedFields.forEach((field) => {
     const fieldName = field.fieldName.toLowerCase();
-    
+
     if (fieldName.includes("name") || fieldName.includes("client")) {
       clientInfo.name = field.fieldValue;
     } else if (fieldName.includes("email")) {
       clientInfo.email = field.fieldValue;
-    } else if (fieldName.includes("phone") || fieldName.includes("mobile") || fieldName.includes("tel")) {
+    } else if (
+      fieldName.includes("phone") ||
+      fieldName.includes("mobile") ||
+      fieldName.includes("tel")
+    ) {
       clientInfo.phone = field.fieldValue;
-    } else if (fieldName.includes("address") || fieldName.includes("location")) {
+    } else if (
+      fieldName.includes("address") ||
+      fieldName.includes("location")
+    ) {
       clientInfo.address = field.fieldValue;
     }
   });
@@ -330,9 +338,9 @@ function extractClientInfo(extractedFields: Array<{ fieldName: string; fieldValu
 
 // Helper function to generate unique case number
 async function generateCaseNumber(): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = dayjs().year();
   const prefix = `CASE-${year}-`;
-  
+
   // Get the latest case number for this year
   const latestCase = await prisma.case.findFirst({
     where: {
@@ -468,7 +476,7 @@ export async function updateCaseNote(data: {
         title: data.title,
         content: data.content,
         updatedBy: data.updatedBy,
-        updatedAt: new Date(),
+        updatedAt: dayjs().toDate(),
       },
     });
 
@@ -521,7 +529,7 @@ export async function updateClient(data: {
         phone: data.phone,
         address: data.address,
         updatedBy: data.updatedBy,
-        updatedAt: new Date(),
+        updatedAt: dayjs().toDate(),
       },
     });
 
@@ -544,8 +552,10 @@ export async function generateCaseStrategy(data: {
   reason?: string;
 }) {
   try {
-    const { generateCaseStrategy: generateStrategy } = await import("@/ai-sdk/agents/strategyManager");
-    
+    const { generateCaseStrategy: generateStrategy } = await import(
+      "@/ai-sdk/agents/strategyManager"
+    );
+
     const result = await generateStrategy({
       caseId: data.caseId,
       reason: data.reason || "Manual strategy generation requested",
@@ -571,15 +581,82 @@ export async function generateCaseStrategy(data: {
   }
 }
 
-// Upload and process documents with AI extraction + backend integration
-export async function uploadDocuments(data: {
+export async function updateStrategyManually(data: {
   caseId: string;
-  files: File[];
+  content: string;
+  title?: string;
+  previousVersion?: number;
+  isHtml?: boolean;
 }) {
+  try {
+    // Store the content as-is if it's HTML, otherwise it's markdown
+    const contentToStore = data.content;
+    const contentType = data.isHtml ? "html" : "markdown";
+
+    // Get the case info
+    const caseInfo = await prisma.case.findUnique({
+      where: { id: data.caseId },
+      select: { title: true },
+    });
+
+    if (!caseInfo) {
+      return {
+        success: false,
+        error: "Case not found",
+      };
+    }
+
+    // Get the latest version number
+    const latestStrategy = await prisma.caseStrategy.findFirst({
+      where: { caseId: data.caseId },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    });
+
+    const nextVersion = (latestStrategy?.version || 0) + 1;
+
+    // Create new strategy version
+    const newStrategy = await prisma.caseStrategy.create({
+      data: {
+        caseId: data.caseId,
+        version: nextVersion,
+        title: data.title || `Strategy v${nextVersion} - ${caseInfo.title}`,
+        content: contentToStore,
+        summary:
+          contentToStore.replace(/<[^>]*>/g, "").substring(0, 200) + "...",
+        generationReason: "Manual edit by user",
+        aiModel: "manual-edit",
+        strategy_metadata: {
+          editedFrom: data.previousVersion || nextVersion - 1,
+          editType: "manual",
+          contentType: contentType,
+          editedAt: dayjs().toISOString(),
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: "Strategy updated successfully",
+      strategy: newStrategy,
+    };
+  } catch (error) {
+    console.error("Error updating strategy manually:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    };
+  }
+}
+
+// Upload and process documents with AI extraction + backend integration
+export async function uploadDocuments(data: { caseId: string; files: File[] }) {
   try {
     // Import required modules
     const { uploadFileToS3 } = await import("@/lib/s3");
-    const { extractCaseDetails } = await import("@/ai-sdk/onboarding/extract-case-details");
+    const { extractCaseDetails } = await import(
+      "@/ai-sdk/onboarding/extract-case-details"
+    );
 
     const results = [];
 
@@ -588,12 +665,14 @@ export async function uploadDocuments(data: {
         // Upload file to backend (handles S3 + Pinecone chunking)
         const uploadResult = await uploadFileToS3(file, data.caseId);
         if (!uploadResult.success) {
-          throw new Error(`Failed to upload ${file.name}: ${uploadResult.error}`);
+          throw new Error(
+            `Failed to upload ${file.name}: ${uploadResult.error}`
+          );
         }
 
         // Convert file to base64 for local AI processing
         const arrayBuffer = await file.arrayBuffer();
-        const base64Data = Buffer.from(arrayBuffer).toString('base64');
+        const base64Data = Buffer.from(arrayBuffer).toString("base64");
 
         // Extract document details using local AI (for UI categorization)
         const documentData = {
@@ -623,18 +702,18 @@ export async function uploadDocuments(data: {
                 category: extractionResult.documentCategory,
                 rationale: extractionResult.categoryRationale,
                 extractedFields: extractionResult.extractedFields,
-                extractedAt: new Date().toISOString(),
+                extractedAt: dayjs().toISOString(),
               },
               s3Info: {
                 bucket: uploadResult.bucket,
                 key: uploadResult.key,
-                uploadedAt: new Date().toISOString(),
+                uploadedAt: dayjs().toISOString(),
               },
               backendProcessing: {
                 chunksCreated: uploadResult.chunksCreated,
                 documentsProcessed: uploadResult.documentsProcessed,
                 warning: uploadResult.warning,
-                processedAt: new Date().toISOString(),
+                processedAt: dayjs().toISOString(),
               },
             },
           },
@@ -648,13 +727,13 @@ export async function uploadDocuments(data: {
           chunksCreated: uploadResult.chunksCreated,
           warning: uploadResult.warning,
         });
-
       } catch (fileError) {
         console.error(`Error processing file ${file.name}:`, fileError);
         results.push({
           success: false,
           fileName: file.name,
-          error: fileError instanceof Error ? fileError.message : "Unknown error",
+          error:
+            fileError instanceof Error ? fileError.message : "Unknown error",
         });
       }
     }
@@ -665,6 +744,151 @@ export async function uploadDocuments(data: {
     };
   } catch (error) {
     console.error("Error uploading documents:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    };
+  }
+}
+
+interface UrlDocumentInput {
+  url: string;
+  fetchContent: boolean;
+}
+
+export async function addUrlDocuments({
+  caseId,
+  urls,
+}: {
+  caseId: string;
+  urls: UrlDocumentInput[];
+}) {
+  try {
+    const { scrapeAndUploadUrl } = await import("@/lib/backend-api");
+    const results = [];
+
+    for (const urlEntry of urls) {
+      try {
+        // Validate URL format
+        const urlObj = new URL(urlEntry.url);
+
+        // Create a placeholder document record first
+        const document = await prisma.document.create({
+          data: {
+            caseId,
+            title: urlObj.hostname,
+            description: `Document from ${urlEntry.url}`,
+            fileName: urlEntry.url,
+            fileUrl: urlEntry.url,
+            fileSize: null,
+            mimeType: "text/html",
+            category: "Web Link",
+            categoryRationale: "URL-based document",
+            s3Bucket: null,
+            s3Key: null,
+            document_metadata: {
+              documentType: urlEntry.fetchContent ? "url_fetched" : "url_reference",
+              originalUrl: urlEntry.url,
+              uploadStatus: "pending",
+            },
+          },
+        });
+
+        if (urlEntry.fetchContent) {
+          // Call backend to scrape and upload content
+          const scrapeResult = await scrapeAndUploadUrl(
+            urlEntry.url,
+            caseId,
+            true,
+            document.id
+          );
+
+          if (scrapeResult.success && scrapeResult.data) {
+            // Update document with backend results
+            await prisma.document.update({
+              where: { id: document.id },
+              data: {
+                title: scrapeResult.data.url,
+                fileUrl: scrapeResult.data.s3_url || urlEntry.url,
+                s3Bucket: scrapeResult.data.s3_url ? "extracted from URL" : null,
+                s3Key: scrapeResult.data.s3_url ? "extracted from URL" : null,
+                fileSize: scrapeResult.data.content_size || null,
+                document_metadata: {
+                  documentType: "url_fetched",
+                  originalUrl: urlEntry.url,
+                  uploadStatus: "completed",
+                  backendProcessing: {
+                    chunksCreated: scrapeResult.data.chunks_created,
+                    documentsProcessed: scrapeResult.data.documents_processed,
+                    warning: scrapeResult.data.warning,
+                    processedAt: new Date().toISOString(),
+                  },
+                  scrapedAt: new Date().toISOString(),
+                  contentSize: scrapeResult.data.content_size,
+                },
+              },
+            });
+
+            results.push({
+              success: true,
+              url: urlEntry.url,
+              documentId: document.id,
+            });
+          } else {
+            // Update document as failed
+            await prisma.document.update({
+              where: { id: document.id },
+              data: {
+                document_metadata: {
+                  documentType: "url_fetched",
+                  originalUrl: urlEntry.url,
+                  uploadStatus: "failed",
+                  error: scrapeResult.error,
+                },
+              },
+            });
+
+            results.push({
+              success: false,
+              url: urlEntry.url,
+              error: scrapeResult.error || "Unknown error",
+            });
+          }
+        } else {
+          // Reference only - just update status to completed
+          await prisma.document.update({
+            where: { id: document.id },
+            data: {
+              document_metadata: {
+                documentType: "url_reference",
+                originalUrl: urlEntry.url,
+                uploadStatus: "completed",
+              },
+            },
+          });
+
+          results.push({
+            success: true,
+            url: urlEntry.url,
+            documentId: document.id,
+          });
+        }
+      } catch (urlError) {
+        console.error(`Error processing URL ${urlEntry.url}:`, urlError);
+        results.push({
+          success: false,
+          url: urlEntry.url,
+          error: urlError instanceof Error ? urlError.message : "Unknown error",
+        });
+      }
+    }
+
+    return {
+      success: true,
+      data: results,
+    };
+  } catch (error) {
+    console.error("Error adding URL documents:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",

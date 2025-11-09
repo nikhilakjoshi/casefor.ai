@@ -7,13 +7,28 @@ import {
   updateCaseNote,
   deleteCaseNote,
   generateCaseStrategy,
+  updateStrategyManually,
+  uploadDocumentsToCase,
 } from "@/actions/case";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Loader2, AlertCircle } from "lucide-react";
+import { Bot, Loader2, AlertCircle, Edit, FileDown, History } from "lucide-react";
 import Markdown from "markdown-to-jsx";
 import { ScrollArea } from "./ui/scroll-area";
+import dynamic from "next/dynamic";
+import { markdownToHtmlSync } from "@/lib/content-converter";
+import { generatePdfFromHtml } from "@/lib/pdf-generator";
+import dayjs from "dayjs";
+import { StrategyHistoryModal } from "./strategy-history-modal";
+
+const ConfigurableSimpleEditor = dynamic(
+  () =>
+    import("@/components/configurable-simple-editor").then(
+      (mod) => mod.ConfigurableSimpleEditor
+    ),
+  { ssr: false }
+);
 
 interface CaseNote {
   id: string;
@@ -34,6 +49,10 @@ interface CaseStrategy {
   generationReason?: string | null;
   createdAt: string;
   generatedBy?: string | null;
+  strategy_metadata?: {
+    contentType?: string;
+    [key: string]: unknown;
+  } | null;
 }
 
 interface CaseStrategyPanelProps {
@@ -54,6 +73,11 @@ export function CaseStrategyPanel({
   const [, startTransition] = useTransition();
   const [isGeneratingStrategy, setIsGeneratingStrategy] = useState(false);
   const [strategyError, setStrategyError] = useState<string | null>(null);
+  const [isEditingStrategy, setIsEditingStrategy] = useState(false);
+  const [editedStrategyContent, setEditedStrategyContent] = useState("");
+  const [isSavingStrategy, setIsSavingStrategy] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const router = useRouter();
 
   const handleAddNote = async () => {
@@ -162,9 +186,114 @@ export function CaseStrategyPanel({
     generateStrategy();
   };
 
+  const handleEditStrategy = (strategy: CaseStrategy) => {
+    // If content is already HTML, use it directly; otherwise convert from Markdown
+    const htmlContent =
+      strategy.strategy_metadata?.contentType === "html"
+        ? strategy.content
+        : markdownToHtmlSync(strategy.content);
+
+    setEditedStrategyContent(htmlContent);
+    setIsEditingStrategy(true);
+  };
+
+  const handleCancelEditStrategy = () => {
+    setIsEditingStrategy(false);
+    setEditedStrategyContent("");
+  };
+
+  const handleSaveStrategy = async () => {
+    if (!editedStrategyContent.trim()) return;
+
+    const latestStrategy = strategies[0];
+    if (!latestStrategy) return;
+
+    setIsSavingStrategy(true);
+
+    try {
+      const result = await updateStrategyManually({
+        caseId,
+        content: editedStrategyContent,
+        previousVersion: latestStrategy.version,
+        isHtml: true, // Mark as HTML content from TipTap editor
+      });
+
+      if (result.success) {
+        setIsEditingStrategy(false);
+        setEditedStrategyContent("");
+        router.refresh();
+      } else {
+        console.error("Failed to save strategy:", result.error);
+        alert("Failed to save strategy: " + result.error);
+      }
+    } catch (error) {
+      console.error("Failed to save strategy:", error);
+      alert("Failed to save strategy");
+    } finally {
+      setIsSavingStrategy(false);
+    }
+  };
+
+  const handleExportToPdf = async () => {
+    const latestStrategy = strategies[0];
+    if (!latestStrategy) return;
+
+    setIsExportingPdf(true);
+
+    try {
+      let htmlContent: string;
+
+      if (isEditingStrategy) {
+        // Use the currently edited content
+        htmlContent = editedStrategyContent;
+      } else {
+        // Check if content is already HTML or needs conversion from Markdown
+        htmlContent =
+          latestStrategy.strategy_metadata?.contentType === "html"
+            ? latestStrategy.content
+            : markdownToHtmlSync(latestStrategy.content);
+      }
+
+      const pdfBlob = await generatePdfFromHtml(
+        htmlContent,
+        latestStrategy.title
+      );
+      const file = new File(
+        [pdfBlob],
+        `${latestStrategy.title.replace(/[^a-z0-9]/gi, "_")}.pdf`,
+        { type: "application/pdf" }
+      );
+
+      const result = await uploadDocumentsToCase({
+        caseId,
+        files: [file],
+        categories: [
+          {
+            fileName: file.name,
+            category: "Strategy Document",
+            confidence: 1.0,
+            rationale: "Strategy exported as PDF from case strategy panel",
+          },
+        ],
+      });
+
+      if (result.success) {
+        alert("Strategy exported to case documents successfully!");
+        router.refresh();
+      } else {
+        alert("Failed to export strategy: " + result.error);
+      }
+    } catch (error) {
+      console.error("Failed to export strategy:", error);
+      alert("Failed to export strategy as PDF");
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
-    <ScrollArea className="max-w-fit" overrideTableDisplay>
-      <Card className="border-none shadow-none max-h-[70vh] max-w-fit">
+    <ScrollArea className="" overrideTableDisplay>
+      <Card className="border-none shadow-none max-h-[70vh]">
         <CardHeader>
           <CardTitle className="flex items-center">
             Case Strategy
@@ -181,11 +310,22 @@ export function CaseStrategyPanel({
                     Retry
                   </Button>
                 )}
+                {strategies && strategies.length > 1 && (
+                  <Button
+                    onClick={() => setShowHistoryModal(true)}
+                    size="sm"
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <History className="h-4 w-4" />
+                    View History
+                  </Button>
+                )}
                 <Button
                   onClick={generateStrategy}
                   size="sm"
                   variant="outline"
-                  disabled={isGeneratingStrategy}
+                  disabled={isGeneratingStrategy || isEditingStrategy}
                   className="flex items-center gap-2"
                 >
                   {isGeneratingStrategy ? (
@@ -193,7 +333,11 @@ export function CaseStrategyPanel({
                   ) : (
                     <Bot className="h-4 w-4" />
                   )}
-                  {isGeneratingStrategy ? "Generating..." : "Generate Strategy"}
+                  {isGeneratingStrategy
+                    ? "Generating..."
+                    : strategies && strategies.length > 0
+                    ? "Regenerate Strategy"
+                    : "Generate Strategy"}
                 </Button>
               </div>
             </div>
@@ -232,37 +376,97 @@ export function CaseStrategyPanel({
 
               {strategies && strategies.length > 0 ? (
                 <div className="space-y-3">
-                  {strategies.map((strategy) => (
-                    <div key={strategy.id} className="px-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <h5 className="font-medium">{strategy.title}</h5>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">v{strategy.version}</Badge>
-                          {/* <Badge variant="secondary" className="text-xs">
-                            {strategy.aiModel}
-                          </Badge> */}
+                  {/* Show only the latest strategy */}
+                  {(() => {
+                    const strategy = strategies[0];
+                    return (
+                      <div key={strategy.id} className="px-1">
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="font-medium">{strategy.title}</h5>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">v{strategy.version}</Badge>
+                            {!isEditingStrategy && (
+                              <>
+                                <Button
+                                  onClick={() => handleEditStrategy(strategy)}
+                                  size="sm"
+                                  variant="ghost"
+                                  className="flex items-center gap-1"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  onClick={handleExportToPdf}
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={isExportingPdf}
+                                  className="flex items-center gap-1"
+                                >
+                                  {isExportingPdf ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <FileDown className="h-3 w-3" />
+                                  )}
+                                  Add to Documents
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </div>
+                        {strategy.summary && !isEditingStrategy && (
+                          <p className="text-sm text-muted-foreground mb-2">
+                            {strategy.summary}
+                          </p>
+                        )}
+
+                        {isEditingStrategy ? (
+                          <div className="markdown-body">
+                            <ConfigurableSimpleEditor
+                              content={editedStrategyContent}
+                              onUpdate={(content: string) =>
+                                setEditedStrategyContent(content)
+                              }
+                              placeholder="Edit your strategy..."
+                              showActions={true}
+                              onCancel={handleCancelEditStrategy}
+                              onSave={handleSaveStrategy}
+                              onExport={handleExportToPdf}
+                              isSaving={isSavingStrategy}
+                              isExporting={isExportingPdf}
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-sm prose prose-sm max-w-none markdown-body">
+                              {/* Check if content is HTML or Markdown based on metadata */}
+                              {strategy.strategy_metadata?.contentType ===
+                              "html" ? (
+                                <div
+                                  dangerouslySetInnerHTML={{
+                                    __html: strategy.content,
+                                  }}
+                                />
+                              ) : (
+                                <Markdown>{strategy.content}</Markdown>
+                              )}
+                            </div>
+                            {strategy.generationReason && (
+                              <p className="text-xs text-blue-700 mt-2 italic">
+                                Generated because: {strategy.generationReason}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Generated:{" "}
+                              {dayjs(strategy.createdAt).format("MM/DD/YYYY")}
+                              {strategy.generatedBy &&
+                                ` by ${strategy.generatedBy}`}
+                            </p>
+                          </>
+                        )}
                       </div>
-                      {strategy.summary && (
-                        <p className="text-sm text-muted-foreground mb-2">
-                          {strategy.summary}
-                        </p>
-                      )}
-                      <div className="text-sm prose prose-sm max-w-none markdown-body">
-                        <Markdown>{strategy.content}</Markdown>
-                      </div>
-                      {strategy.generationReason && (
-                        <p className="text-xs text-blue-700 mt-2 italic">
-                          Generated because: {strategy.generationReason}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Generated:{" "}
-                        {new Date(strategy.createdAt).toLocaleDateString()}
-                        {strategy.generatedBy && ` by ${strategy.generatedBy}`}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="text-center py-6">
@@ -280,6 +484,11 @@ export function CaseStrategyPanel({
           </div>
         </CardContent>
       </Card>
+      <StrategyHistoryModal
+        strategies={strategies}
+        open={showHistoryModal}
+        onOpenChange={setShowHistoryModal}
+      />
     </ScrollArea>
   );
 }

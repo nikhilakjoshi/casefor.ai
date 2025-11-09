@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Upload, Download, Trash2, Plus } from "lucide-react";
+import dayjs from "dayjs";
 
 interface Document {
   id: string;
@@ -187,7 +188,7 @@ export function DocumentManagementPanel({ documents, caseId }: DocumentManagemen
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
                   <span>File: {doc.fileName}</span>
                   <span>Size: {doc.fileSize ? `${Math.round(doc.fileSize / 1024)} KB` : "Unknown"}</span>
-                  <span>Uploaded: {new Date(doc.createdAt).toLocaleDateString()}</span>
+                  <span>Uploaded: {dayjs(doc.createdAt).format('MM/DD/YYYY')}</span>
                 </div>
               </div>
             ))}

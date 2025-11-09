@@ -1,4 +1,4 @@
-import { LegalAppSidebar } from "@/components/legal-app-sidebar";
+import { SidebarWithCases } from "@/components/sidebar-with-cases";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -14,10 +14,10 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-export default function Page() {
+export default async function Page() {
   return (
     <SidebarProvider>
-      <LegalAppSidebar />
+      <SidebarWithCases />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
